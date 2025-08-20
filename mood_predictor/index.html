@@ -1,0 +1,116 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>🪄 Mood & Fortune</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #111;
+      color: #eee;
+      max-width: 700px;
+      margin: 40px auto;
+      line-height: 1.5;
+      padding: 0 20px;
+    }
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 0.5em;
+    }
+    form {
+      display: flex;
+      gap: .5em;
+      margin-bottom: 1.5em;
+    }
+    input, select, button {
+      padding: .4em .6em;
+      border-radius: 8px;
+      border: none;
+      font-size: 1rem;
+    }
+    input, select {
+      background: #222;
+      color: #eee;
+    }
+    button {
+      background: #ff4d4d;
+      color: #fff;
+      cursor: pointer;
+      transition: .2s;
+    }
+    button:hover { background: #ff6666; }
+    .card {
+      background: #1c1c1c;
+      padding: 1em 1.2em;
+      border-radius: 12px;
+      margin-bottom: 1em;
+      box-shadow: 0 0 10px #0005;
+    }
+    .emoji {
+      font-size: 2rem;
+      margin-right: .5em;
+    }
+    .meme img {
+      max-width: 100%;
+      border-radius: 8px;
+      margin-top: .5em;
+    }
+    small { color: #aaa; }
+  </style>
+</head>
+<body>
+  <h1>🪄 Mood & Fortune (styled)</h1>
+  <form id="f">
+    <input name="name" placeholder="your name" required>
+    <select name="mode">
+      <option>daily</option>
+      <option>random</option>
+    </select>
+    <button>roll</button>
+  </form>
+
+  <div id="mood" class="card"></div>
+  <div id="fortune" class="card"></div>
+  <div id="meme" class="card meme"></div>
+
+<script>
+f.onsubmit = async (e) => {
+  e.preventDefault();
+  const qs = new URLSearchParams(new FormData(f)).toString();
+  const r = await fetch('/daily?' + qs);
+  const data = await r.json();
+  render(data);
+};
+
+function render(d) {
+  mood.innerHTML = `
+    <div><span class="emoji">${d.predict.emoji}</span>
+    <strong>${d.predict.mood}</strong></div>
+    <small>confidence ${d.predict.confidence}%</small><br>
+    <small>${d.predict.reason}</small>`;
+    
+  fortune.innerHTML = `
+    <strong>Fortune (${d.fortune.threatLevel} threat)</strong><br>
+    <p>${d.fortune.omen}</p>
+    <small>Luck: ${d.fortune.luck}</small><br>
+    <small>${d.fortune.disclaimer}</small>`;
+    
+  meme.innerHTML = `
+    <strong>Meme of the day:</strong> ${d.meme.name}<br>
+    <img src="${d.meme.url}" alt="meme">`;
+}
+</script>
+    <p style="margin-top:2rem">
+  <a href="/dice.html" style="
+    background:#7c5cff;
+    color:#fff;
+    padding:.6em 1em;
+    border-radius:10px;
+    text-decoration:none;
+    font-weight:600;
+  ">🎲 Go to Dice Roller</a>
+</p>
+
+</body>
+</html>
+

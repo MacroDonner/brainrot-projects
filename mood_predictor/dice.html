@@ -1,0 +1,179 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>🎲 Dice Roller</title>
+  <style>
+    :root{
+      --bg:#111;--panel:#1b1b1b;--text:#eee;--muted:#aaa;--accent:#7c5cff;
+      --crit:#1b5e20;--critText:#b9f6ca;--fumble:#5e1b1b;--fumbleText:#ffcdd2;
+    }
+    *{box-sizing:border-box}
+    body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);
+         max-width:760px;margin:40px auto;padding:0 20px;line-height:1.5}
+    h1{font-size:1.9rem;margin:.2rem 0 1rem}
+    a{color:#9ad1ff;text-decoration:none}
+    .row{display:flex;gap:.6rem;flex-wrap:wrap;margin:0 0 1rem}
+    input,select,button{padding:.5rem .7rem;border-radius:10px;border:none;font-size:1rem}
+    input,select{background:#222;color:var(--text)}
+    button{background:var(--accent);color:#fff;cursor:pointer;transition:.2s}
+    button:hover{opacity:.9}
+    .panel{background:var(--panel);padding:1rem 1.2rem;border-radius:14px;box-shadow:0 0 14px #0006}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.8rem;margin:.6rem 0 0}
+    .muted{color:var(--muted)}
+    .badges{display:flex;gap:.4rem;flex-wrap:wrap;margin:.2rem 0 .4rem}
+    .badge{padding:.1rem .5rem;border-radius:8px;font-size:.85rem}
+    .crit{background:var(--crit);color:var(--critText)}
+    .fumble{background:var(--fumble);color:var(--fumbleText)}
+    .adv{background:#1e3a8a;color:#bfdbfe}
+    .dis{background:#7f1d1d;color:#fecaca}
+
+    /* dice visuals */
+    .dice{display:flex;gap:.35rem;flex-wrap:wrap;margin:.35rem 0}
+    .die{width:40px;height:40px;border-radius:10px;background:#2a2a2a;display:grid;
+         place-items:center;font-weight:700;box-shadow:inset 0 0 0 2px #0007}
+    .die.d6{font-size:26px}               /* will use unicode dice for d6 */
+    .die.other{font-size:18px}            /* pill with number for non-d6 */
+
+    /* tiny roll animation */
+    .shake{animation:shake .28s ease-in-out 1}
+    @keyframes shake{
+      0%{transform:translateX(0) rotate(0)}25%{transform:translateX(-2px) rotate(-3deg)}
+      50%{transform:translateX(2px) rotate(3deg)}75%{transform:translateX(-1px) rotate(-2deg)}
+      100%{transform:translateX(0) rotate(0)}
+    }
+
+    /* history */
+    .history{margin-top:1rem}
+    .h-item{display:flex;justify-content:space-between;gap:.6rem;padding:.5rem .6rem;
+            background:#161616;border-radius:10px;margin:.35rem 0}
+    .h-left{display:flex;gap:.6rem;align-items:center}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  </style>
+</head>
+<body>
+  <h1>🎲 DnD Dice Roller</h1>
+
+  <div class="row panel">
+    <select id="preset">
+      <option value="d20">d20</option><option value="d12">d12</option>
+      <option value="d10">d10</option><option value="d8">d8</option>
+      <option value="d6" selected>d6</option><option value="d4">d4</option>
+    </select>
+    <input id="count" type="number" min="1" value="2" title="count">
+    <input id="mod" type="number" value="0" title="modifier">
+    <label class="muted"><input id="adv" type="checkbox"> advantage (d20)</label>
+    <label class="muted"><input id="dis" type="checkbox"> disadvantage (d20)</label>
+    <button id="rollBtn">roll</button>
+    <input id="expr" class="mono" placeholder="or custom: 3d8+2 or d20" style="flex:1;min-width:220px">
+    <button id="rollExpr">roll expr</button>
+  </div>
+
+  <div id="result" class="panel">
+    <div class="badges" id="badges"></div>
+    <div class="grid">
+      <div><div class="muted">expr</div><strong id="exprOut" class="mono">—</strong></div>
+      <div><div class="muted">rolls</div><div id="dice" class="dice"></div></div>
+      <div><div class="muted">modifier</div><strong id="modOut" class="mono">0</strong></div>
+      <div><div class="muted">total</div><strong id="total" class="mono">—</strong></div>
+    </div>
+  </div>
+
+  <div class="history">
+    <div class="muted">history</div>
+    <div id="hist"></div>
+  </div>
+
+  <p class="muted"><a href="/">← back to Mood & Fortune</a></p>
+
+<script>
+  const $ = s => document.querySelector(s);
+  const badges = $("#badges"), exprOut = $("#exprOut"), diceBox = $("#dice"), modOut = $("#modOut"), total = $("#total"), hist = $("#hist");
+  const D6_EMOJI = ["","⚀","⚁","⚂","⚃","⚄","⚅"];
+
+  function buildExpr(){
+    const sides = $("#preset").value.replace("d","");
+    const cnt = Math.max(1, parseInt($("#count").value||"1",10));
+    const mod = parseInt($("#mod").value||"0",10);
+    const base = `${cnt}d${sides}`;
+    return mod ? `${base}${mod>=0?"+":""}${mod}` : base;
+  }
+
+  async function call(expr, adv=false, dis=false){
+    const params = new URLSearchParams({expr});
+    if (adv) params.set("adv","1");
+    if (dis) params.set("dis","1");
+    const r = await fetch("/roll?"+params);
+    const data = await r.json();
+    render(data);
+    pushHistory(data);
+  }
+
+  function render(d){
+    // badges
+    const parts = [];
+    if (d.crit || d.crits) parts.push(`<span class="badge crit">crit ${d.crit?1:d.crits}</span>`);
+    if (d.fumble || d.fumbles) parts.push(`<span class="badge fumble">nat1 ${d.fumble?1:d.fumbles}</span>`);
+    if (d.mode === "advantage") parts.push(`<span class="badge adv">ADV</span>`);
+    if (d.mode === "disadvantage") parts.push(`<span class="badge dis">DIS</span>`);
+    badges.innerHTML = parts.join(" ");
+
+    // text fields
+    exprOut.textContent = d.expr;
+    modOut.textContent = d.mod ?? 0;
+    total.textContent = d.total;
+
+    // dice visuals
+    diceBox.innerHTML = "";
+    const sides = parseInt(String(d.expr).match(/d(\d+)/i)?.[1] || "6", 10);
+    const rolls = d.rolls || [];
+    const kept = d.kept; // for adv/dis
+    rolls.forEach((val, idx) => {
+      const el = document.createElement("div");
+      const isD6 = sides === 6;
+      el.className = "die " + (isD6 ? "d6" : "other") + " shake";
+
+      if (isD6 && val >=1 && val <=6) el.textContent = D6_EMOJI[val];
+      else el.textContent = val;
+
+      // highlight kept die in adv/dis
+      if (kept != null && (val === kept) && rolls.length === 2) {
+        el.style.outline = "2px solid #9ad1ff";
+        el.style.boxShadow = "0 0 10px #9ad1ff55";
+      }
+      diceBox.appendChild(el);
+      setTimeout(()=>el.classList.remove("shake"), 320);
+    });
+  }
+
+  function pushHistory(d){
+    const row = document.createElement("div");
+    row.className = "h-item";
+    const left = document.createElement("div");
+    left.className = "h-left";
+    left.innerHTML = `<span class="mono">${d.expr}</span> <span class="muted">→</span> <strong class="mono">${d.total}</strong>`;
+    const right = document.createElement("div");
+    right.className = "muted mono";
+    right.textContent = (d.rolls||[]).join(", ");
+    row.append(left, right);
+    hist.prepend(row);
+    // cap to last 10
+    while (hist.children.length > 10) hist.removeChild(hist.lastChild);
+  }
+
+  // UI hooks
+  $("#rollBtn").onclick = () => {
+    const expr = buildExpr();
+    // resolve adv/dis conflict
+    const adv = $("#adv").checked, dis = $("#dis").checked;
+    if (adv && dis) { $("#dis").checked = false; }
+    call(expr, adv, $("#dis").checked);
+  };
+  $("#rollExpr").onclick = () => {
+    const expr = $("#expr").value.trim() || "d20";
+    call(expr);
+  };
+</script>
+</body>
+</html>
+
